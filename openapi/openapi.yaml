@@ -1,0 +1,90 @@
+openapi: 3.0.3
+info:
+  title: Algorhythm Results API
+  version: 0.1.0
+servers:
+  - url: http://localhost:8082
+paths:
+  /healthz:
+    get:
+      summary: Liveness
+      responses:
+        "200":
+          description: OK
+  /readyz:
+    get:
+      summary: Readiness
+      responses:
+        "200":
+          description: OK
+        "503":
+          description: Not ready
+  /api/v1/runs/{run_id}/summary:
+    get:
+      summary: Get run summary
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Summary payload
+  /api/v1/runs/{run_id}/trades:
+    get:
+      summary: List run trades
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer }
+        - in: query
+          name: offset
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Trades
+  /api/v1/runs/{run_id}/equity-curve:
+    get:
+      summary: Get run equity curve
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Equity curve
+  /api/v1/compare/runs:
+    get:
+      summary: Compare two runs
+      parameters:
+        - in: query
+          name: left_run_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: right_run_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Run comparison
+  /api/v1/compare/versions:
+    get:
+      summary: Compare latest runs of two strategy versions
+      parameters:
+        - in: query
+          name: left_version_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: right_version_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Version comparison
