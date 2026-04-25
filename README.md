@@ -15,6 +15,7 @@ Copy `.env.example` to `.env` or set:
 |----------|-------------|
 | `RESULTS_API_HTTP_PORT` | Listen port (default `8082`) |
 | `RESULTS_API_CLICKHOUSE_DSN` | Native ClickHouse DSN for clickhouse-go |
+| `RESULTS_API_API_KEYS` | Optional. Comma-separated API keys. When non-empty, all routes except `/healthz` and `/readyz` require header `X-API-Key`. When empty, no auth (dev default). |
 
 See `cmd/api/main.go` for parsing details.
 

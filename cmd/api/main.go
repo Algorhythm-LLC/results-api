@@ -41,6 +41,10 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID, middleware.RealIP, middleware.Logger, middleware.Recoverer)
+	if keys := parseAPIKeySet(os.Getenv("RESULTS_API_API_KEYS")); len(keys) > 0 {
+		r.Use(apiKeyMiddleware(keys))
+		slog.Info("results-api API key auth enabled", "keys", len(keys))
+	}
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
