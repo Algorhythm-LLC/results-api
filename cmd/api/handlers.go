@@ -213,9 +213,9 @@ func fetchRunSummary(ctx context.Context, conn driver.Conn, runID string) (runSu
 		       trades_total, trades_won, trades_lost,
 		       profit_factor, expectancy,
 		       regime_breakdown_json
-		FROM default.backtest_run_metrics
+		FROM default.backtest_run_metrics FINAL
 		WHERE run_id = ?
-		ORDER BY period_to DESC
+		ORDER BY version DESC, period_to DESC
 		LIMIT 1
 	`, runID).Scan(
 		&out.RunID, &out.StrategyVersionID, &out.Symbol,
@@ -258,9 +258,9 @@ func latestSummaryForVersion(ctx context.Context, conn driver.Conn, versionID st
 		       trades_total, trades_won, trades_lost,
 		       profit_factor, expectancy,
 		       regime_breakdown_json
-		FROM default.backtest_run_metrics
+		FROM default.backtest_run_metrics FINAL
 		WHERE strategy_version_id = ?
-		ORDER BY period_to DESC
+		ORDER BY period_to DESC, version DESC
 		LIMIT 1
 	`, versionID).Scan(
 		&out.RunID, &out.StrategyVersionID, &out.Symbol,

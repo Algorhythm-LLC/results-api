@@ -30,6 +30,8 @@ Copy `.env.example` to `.env` or set:
 - **OpenAPI 3.1** source: [`internal/openapispec/openapi.yaml`](internal/openapispec/openapi.yaml)
 - **At runtime** (no API key, not rate-limited): `GET /openapi.yaml` (same file as embedded in the binary)
 
+**ClickHouse (source of truth for DDL):** [backtest-engine `migrations/clickhouse/`](https://github.com/Algorhythm-LLC/algorhythm-backtest-engine/tree/main/migrations/clickhouse) — `001_init.sql` (`backtest_run_summaries`); `002_backtest_results.up.sql` (`backtest_trades`, `backtest_equity_curve`, `backtest_run_metrics`). The engine writes the latter three on each successful run. `GET /api/v1/metrics/run/{run_id}` and leaderboard read from **`backtest_run_metrics`** (there is no separate EAV `backtest_metrics` table in 002). Queries use `FINAL` where appropriate for `ReplacingMergeTree(version)`.
+
 ## Run locally
 
 ```bash

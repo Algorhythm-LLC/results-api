@@ -143,6 +143,8 @@ func registerRoutes(r chi.Router, conn driver.Conn, sc *summaryCache) {
 	r.Get("/api/v1/runs/{run_id}/summary", getRunSummary(conn, sc))
 	r.Get("/api/v1/runs/{run_id}/trades", getRunTrades(conn))
 	r.Get("/api/v1/runs/{run_id}/equity-curve", getRunEquity(conn))
+	r.Get("/api/v1/metrics/run/{run_id}", getRunMetrics(conn))
+	r.Get("/api/v1/leaderboard", getLeaderboard(conn))
 	r.Get("/api/v1/compare/runs", compareRuns(conn, sc))
 	r.Get("/api/v1/compare/versions", compareVersions(conn, sc))
 }

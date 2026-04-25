@@ -2,16 +2,18 @@ openapi: 3.1.0
 info:
   title: algorhythm-results-api
   description: |
-    Read-only HTTP API over ClickHouse for backtest run summaries, trades, equity curves, and compare utilities.
+    Read-only HTTP API over ClickHouse for backtest run summaries, trades, equity curves, per-run metrics (table `backtest_run_metrics` per migration 002), leaderboard, and compare utilities.
     When `RESULTS_API_API_KEYS` is set, all `/api/...` routes (except as noted) require `X-API-Key`.
     Rate limiting may return HTTP 429 with JSON `{"error":"rate limit exceeded"}`.
-  version: 0.2.0
+  version: 0.3.0
 servers:
   - url: /
     description: Default (configure via RESULTS_API_HTTP_PORT)
 tags:
   - name: Probes
   - name: Runs
+  - name: Metrics
+  - name: Leaderboard
   - name: Compare
   - name: Meta
 components:
@@ -115,6 +117,31 @@ components:
         left: { $ref: '#/components/schemas/RunSummary' }
         right: { $ref: '#/components/schemas/RunSummary' }
         delta: { $ref: '#/components/schemas/CompareDelta' }
+    RunMetricsRow:
+      allOf:
+        - $ref: '#/components/schemas/RunSummary'
+        - type: object
+          required: [version, created_at]
+          properties:
+            version: { type: integer, format: int64, description: ReplacingMergeTree version column }
+            created_at: { type: string, format: date-time }
+    LeaderboardResponse:
+      type: object
+      required: [metric, period, entries]
+      properties:
+        metric: { type: string, description: Requested or defaulted sort metric }
+        period: { type: string, description: "all, month, quarter, year" }
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/LeaderboardEntry' }
+    LeaderboardEntry:
+      allOf:
+        - $ref: '#/components/schemas/RunSummary'
+        - type: object
+          required: [rank, metric_value]
+          properties:
+            rank: { type: integer, minimum: 1 }
+            metric_value: { type: number, format: double, description: Value used for ordering for the chosen metric }
 paths:
   /healthz:
     get:
@@ -208,6 +235,58 @@ paths:
               schema: { type: array, items: { $ref: '#/components/schemas/EquityRow' } }
         '401': { content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } } }
         '500': { content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } } }
+  /api/v1/metrics/run/{run_id}:
+    get:
+      tags: [Metrics]
+      summary: Full `backtest_run_metrics` row for a run (incl. version, created_at)
+      description: |
+        Reads from ClickHouse `default.backtest_run_metrics` (see backtest-engine migration `002_backtest_results.up.sql`). No separate EAV `backtest_metrics` table in current schema.
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunMetricsRow' }
+        '404': { content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } } }
+        '401': { content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } } }
+        '429': { content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } } }
+  /api/v1/leaderboard:
+    get:
+      tags: [Leaderboard]
+      summary: Top runs from `backtest_run_metrics` by metric
+      parameters:
+        - in: query
+          name: metric
+          description: "sharpe (default), sortino, pnl, maxdd (lowest is best), winrate, profit_factor"
+          schema: { type: string, enum: [sharpe, sortino, pnl, maxdd, winrate, profit_factor] }
+        - in: query
+          name: period
+          description: filter on period_to in UTC; default all
+          schema: { type: string, enum: [all, month, quarter, year] }
+        - in: query
+          name: strategy_version_id
+          description: optional filter on strategy_version_id column
+          schema: { type: string }
+        - in: query
+          name: feature_set_version_id
+          description: optional alias, same filter as strategy_version_id (no feature_set in CH v002)
+          schema: { type: string }
+        - in: query
+          name: limit
+          description: 1…200, default 20
+          schema: { type: integer, minimum: 1, maximum: 200 }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LeaderboardResponse' }
+        '400': { content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } } }
+        '401': { content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } } }
+        '429': { content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } } }
   /api/v1/compare/runs:
     get:
       tags: [Compare]
