@@ -1,0 +1,257 @@
+openapi: 3.1.0
+info:
+  title: algorhythm-results-api
+  description: |
+    Read-only HTTP API over ClickHouse for backtest run summaries, trades, equity curves, and compare utilities.
+    When `RESULTS_API_API_KEYS` is set, all `/api/...` routes (except as noted) require `X-API-Key`.
+    Rate limiting may return HTTP 429 with JSON `{"error":"rate limit exceeded"}`.
+  version: 0.2.0
+servers:
+  - url: /
+    description: Default (configure via RESULTS_API_HTTP_PORT)
+tags:
+  - name: Probes
+  - name: Runs
+  - name: Compare
+  - name: Meta
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  schemas:
+    ErrorBody:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    RunSummary:
+      type: object
+      required:
+        - run_id
+        - strategy_version_id
+        - symbol
+        - period_from
+        - period_to
+        - pnl_abs
+        - pnl_pct
+        - sharpe_ratio
+        - sortino_ratio
+        - max_drawdown_abs
+        - max_drawdown_pct
+        - trades_total
+        - trades_won
+        - trades_lost
+        - profit_factor
+        - expectancy
+        - regime_breakdown_json
+      properties:
+        run_id: { type: string }
+        strategy_version_id: { type: string }
+        symbol: { type: string }
+        period_from: { type: string, format: date-time }
+        period_to: { type: string, format: date-time }
+        pnl_abs: { type: number, format: double }
+        pnl_pct: { type: number, format: float }
+        sharpe_ratio: { type: number, format: float }
+        sortino_ratio: { type: number, format: float }
+        max_drawdown_abs: { type: number, format: double }
+        max_drawdown_pct: { type: number, format: float }
+        trades_total: { type: integer, minimum: 0 }
+        trades_won: { type: integer, minimum: 0 }
+        trades_lost: { type: integer, minimum: 0 }
+        profit_factor: { type: number, format: float }
+        expectancy: { type: number, format: double }
+        regime_breakdown_json: { type: string, description: Opaque JSON string from storage }
+    TradeRow:
+      type: object
+      properties:
+        run_id: { type: string }
+        trade_index: { type: integer, minimum: 0 }
+        symbol: { type: string }
+        side: { type: string }
+        entry_time: { type: string, format: date-time }
+        exit_time: { type: string, format: date-time }
+        entry_price: { type: number, format: double }
+        exit_price: { type: number, format: double }
+        quantity: { type: number, format: double }
+        pnl_abs: { type: number, format: double }
+        pnl_bps: { type: integer }
+        fees_abs: { type: number, format: double }
+        slippage_bps: { type: integer }
+        regime_code: { type: string }
+    EquityRow:
+      type: object
+      properties:
+        run_id: { type: string }
+        ts: { type: string, format: date-time }
+        equity: { type: number, format: double }
+        drawdown_abs: { type: number, format: double }
+        drawdown_pct: { type: number, format: float }
+    CompareDelta:
+      type: object
+      description: Differences (left minus right) for key metrics
+      properties:
+        pnl_abs: { type: number, format: double }
+        pnl_pct: { type: number, format: float }
+        sharpe_ratio: { type: number, format: float }
+        max_drawdown_pct: { type: number, format: float }
+        trades_total: { type: integer, format: int64 }
+        profit_factor: { type: number, format: float }
+        expectancy: { type: number, format: double }
+    CompareRunsResponse:
+      type: object
+      required: [left, right, delta]
+      properties:
+        left: { $ref: '#/components/schemas/RunSummary' }
+        right: { $ref: '#/components/schemas/RunSummary' }
+        delta: { $ref: '#/components/schemas/CompareDelta' }
+    CompareVersionsResponse:
+      type: object
+      required: [left, right, delta]
+      properties:
+        left: { $ref: '#/components/schemas/RunSummary' }
+        right: { $ref: '#/components/schemas/RunSummary' }
+        delta: { $ref: '#/components/schemas/CompareDelta' }
+paths:
+  /healthz:
+    get:
+      tags: [Probes]
+      summary: Liveness
+      description: No authentication. Not rate-limited.
+      security: []
+      responses:
+        '200':
+          description: ok
+          content:
+            text/plain:
+              schema: { type: string, example: ok }
+  /readyz:
+    get:
+      tags: [Probes]
+      summary: Readiness
+      description: Pings ClickHouse. No API key. Not rate-limited.
+      security: []
+      responses:
+        '200': { description: ok }
+        '503': { description: ClickHouse unavailable }
+  /openapi.yaml:
+    get:
+      tags: [Meta]
+      summary: This OpenAPI document
+      security: []
+      responses:
+        '200':
+          description: OpenAPI 3.1 document (YAML)
+          content:
+            application/yaml: { schema: { type: string, format: binary } }
+  /api/v1/runs/{run_id}/summary:
+    get:
+      tags: [Runs]
+      summary: Latest backtest run metrics for a run
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunSummary' }
+        '400': { description: bad request (unlikely) }
+        '401': { content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } } }
+        '404':
+          description: No row in backtest_run_metrics
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } }
+        '429': { content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } } }
+  /api/v1/runs/{run_id}/trades:
+    get:
+      tags: [Runs]
+      summary: Trades for a run
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: limit
+          description: default 200
+          schema: { type: integer, minimum: 1, default: 200 }
+        - in: query
+          name: offset
+          description: default 0
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/TradeRow' } }
+        '401': { content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } } }
+        '500': { content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } } }
+  /api/v1/runs/{run_id}/equity-curve:
+    get:
+      tags: [Runs]
+      summary: Equity curve for a run
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/EquityRow' } }
+        '401': { content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } } }
+        '500': { content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } } }
+  /api/v1/compare/runs:
+    get:
+      tags: [Compare]
+      summary: Compare two runs by run_id
+      parameters:
+        - in: query
+          name: left_run_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: right_run_id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CompareRunsResponse' }
+        '400':
+          description: One or both runs missing
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } }
+        '401': { content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } } }
+        '429': { content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } } }
+  /api/v1/compare/versions:
+    get:
+      tags: [Compare]
+      summary: Compare latest run metrics for two strategy versions
+      parameters:
+        - in: query
+          name: left_version_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: right_version_id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CompareVersionsResponse' }
+        '400': { content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } } }
+        '401': { content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } } }
+        '429': { content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } } }
+security:
+  - apiKey: []

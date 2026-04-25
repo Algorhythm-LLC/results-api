@@ -27,7 +27,8 @@ Copy `.env.example` to `.env` or set:
 
 ## API
 
-OpenAPI: [`openapi/openapi.yaml`](openapi/openapi.yaml).
+- **OpenAPI 3.1** source: [`internal/openapispec/openapi.yaml`](internal/openapispec/openapi.yaml)
+- **At runtime** (no API key, not rate-limited): `GET /openapi.yaml` (same file as embedded in the binary)
 
 ## Run locally
 
