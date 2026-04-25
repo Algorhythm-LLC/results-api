@@ -56,36 +56,22 @@ type equityRow struct {
 	DrawdownPct float32   `json:"drawdown_pct"`
 }
 
-func getRunSummary(conn driver.Conn) http.HandlerFunc {
+func getRunSummary(conn driver.Conn, sc *summaryCache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		runID := chi.URLParam(r, "run_id")
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-		defer cancel()
-		var out runSummary
-		err := conn.QueryRow(ctx, `
-			SELECT run_id, strategy_version_id, symbol,
-			       period_from, period_to,
-			       pnl_abs, pnl_pct, sharpe_ratio, sortino_ratio,
-			       max_drawdown_abs, max_drawdown_pct,
-			       trades_total, trades_won, trades_lost,
-			       profit_factor, expectancy,
-			       regime_breakdown_json
-			FROM default.backtest_run_metrics
-			WHERE run_id = ?
-			ORDER BY period_to DESC
-			LIMIT 1
-		`, runID).Scan(
-			&out.RunID, &out.StrategyVersionID, &out.Symbol,
-			&out.PeriodFrom, &out.PeriodTo,
-			&out.PnLAbs, &out.PnLPct, &out.SharpeRatio, &out.SortinoRatio,
-			&out.MaxDrawdownAbs, &out.MaxDrawdownPct,
-			&out.TradesTotal, &out.TradesWon, &out.TradesLost,
-			&out.ProfitFactor, &out.Expectancy,
-			&out.RegimeBreakdown,
-		)
+		if sc != nil {
+			if s, ok := sc.get(runID); ok {
+				writeJSON(w, http.StatusOK, s)
+				return
+			}
+		}
+		out, err := fetchRunSummary(r.Context(), conn, runID)
 		if err != nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 			return
+		}
+		if sc != nil {
+			sc.put(runID, out)
 		}
 		writeJSON(w, http.StatusOK, out)
 	}

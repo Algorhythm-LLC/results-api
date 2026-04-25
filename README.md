@@ -16,8 +16,10 @@ Copy `.env.example` to `.env` or set:
 | `RESULTS_API_HTTP_PORT` | Listen port (default `8082`) |
 | `RESULTS_API_CLICKHOUSE_DSN` | Native ClickHouse DSN for clickhouse-go |
 | `RESULTS_API_API_KEYS` | Optional. Comma-separated API keys. When non-empty, all routes except `/healthz` and `/readyz` require header `X-API-Key`. When empty, no auth (dev default). |
+| `RESULTS_API_SUMMARY_CACHE_SIZE` | Max entries for the in-memory LRU cache of `GET /api/v1/runs/{run_id}/summary` responses. Default `256`. Set to `0` to disable the cache. |
+| `RESULTS_API_SUMMARY_CACHE_TTL` | How long a cached run summary is considered fresh (e.g. `60s`, `2m`). Default `60s`. Invalid or empty values keep the default. |
 
-See `cmd/api/main.go` for parsing details.
+`cmd/api/summarycache.go` implements LRU (hashicorp/golang-lru/v2) plus TTL per entry. Errors from ClickHouse (including missing run) are not cached.
 
 ## API
 

@@ -59,7 +59,11 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
-	registerRoutes(r, conn)
+	summaryCache := newSummaryCacheFromEnv()
+	if summaryCache != nil {
+		slog.Info("results-api run summary cache enabled", "ttl", summaryCache.ttl, "max_entries", summaryCache.size)
+	}
+	registerRoutes(r, conn, summaryCache)
 
 	srv := &http.Server{Addr: ":" + port, Handler: r}
 	go func() {
@@ -122,8 +126,8 @@ func dsnDB(dsn string) string {
 	return "default"
 }
 
-func registerRoutes(r chi.Router, conn driver.Conn) {
-	r.Get("/api/v1/runs/{run_id}/summary", getRunSummary(conn))
+func registerRoutes(r chi.Router, conn driver.Conn, sc *summaryCache) {
+	r.Get("/api/v1/runs/{run_id}/summary", getRunSummary(conn, sc))
 	r.Get("/api/v1/runs/{run_id}/trades", getRunTrades(conn))
 	r.Get("/api/v1/runs/{run_id}/equity-curve", getRunEquity(conn))
 	r.Get("/api/v1/compare/runs", compareRuns(conn))
