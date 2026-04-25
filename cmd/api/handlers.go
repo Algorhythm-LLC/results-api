@@ -59,19 +59,10 @@ type equityRow struct {
 func getRunSummary(conn driver.Conn, sc *summaryCache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		runID := chi.URLParam(r, "run_id")
-		if sc != nil {
-			if s, ok := sc.get(runID); ok {
-				writeJSON(w, http.StatusOK, s)
-				return
-			}
-		}
-		out, err := fetchRunSummary(r.Context(), conn, runID)
+		out, err := fetchRunSummaryWithCache(r.Context(), conn, sc, runID)
 		if err != nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 			return
-		}
-		if sc != nil {
-			sc.put(runID, out)
 		}
 		writeJSON(w, http.StatusOK, out)
 	}
@@ -146,7 +137,7 @@ func getRunEquity(conn driver.Conn) http.HandlerFunc {
 	}
 }
 
-func compareRuns(conn driver.Conn) http.HandlerFunc {
+func compareRuns(conn driver.Conn, sc *summaryCache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		left := chi.URLParam(r, "left_run_id")
 		if left == "" {
@@ -156,8 +147,8 @@ func compareRuns(conn driver.Conn) http.HandlerFunc {
 		if right == "" {
 			right = r.URL.Query().Get("right_run_id")
 		}
-		leftSummary, leftErr := fetchRunSummary(r.Context(), conn, left)
-		rightSummary, rightErr := fetchRunSummary(r.Context(), conn, right)
+		leftSummary, leftErr := fetchRunSummaryWithCache(r.Context(), conn, sc, left)
+		rightSummary, rightErr := fetchRunSummaryWithCache(r.Context(), conn, sc, right)
 		if leftErr != nil || rightErr != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "both run ids must exist"})
 			return
@@ -178,18 +169,18 @@ func compareRuns(conn driver.Conn) http.HandlerFunc {
 	}
 }
 
-func compareVersions(conn driver.Conn) http.HandlerFunc {
+func compareVersions(conn driver.Conn, sc *summaryCache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		leftVersion := r.URL.Query().Get("left_version_id")
 		rightVersion := r.URL.Query().Get("right_version_id")
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
-		left, err := latestSummaryForVersion(ctx, conn, leftVersion)
+		left, err := latestSummaryForVersionWithCache(ctx, conn, sc, leftVersion)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		right, err := latestSummaryForVersion(ctx, conn, rightVersion)
+		right, err := latestSummaryForVersionWithCache(ctx, conn, sc, rightVersion)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
@@ -238,6 +229,23 @@ func fetchRunSummary(ctx context.Context, conn driver.Conn, runID string) (runSu
 	return out, err
 }
 
+// fetchRunSummaryWithCache reuses the same LRU+TTL as GET .../summary (key = run_id).
+func fetchRunSummaryWithCache(ctx context.Context, conn driver.Conn, sc *summaryCache, runID string) (runSummary, error) {
+	if sc != nil {
+		if s, ok := sc.get(runID); ok {
+			return s, nil
+		}
+	}
+	s, err := fetchRunSummary(ctx, conn, runID)
+	if err != nil {
+		return s, err
+	}
+	if sc != nil {
+		sc.put(runID, s)
+	}
+	return s, nil
+}
+
 func latestSummaryForVersion(ctx context.Context, conn driver.Conn, versionID string) (runSummary, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -264,6 +272,17 @@ func latestSummaryForVersion(ctx context.Context, conn driver.Conn, versionID st
 		&out.RegimeBreakdown,
 	)
 	return out, err
+}
+
+func latestSummaryForVersionWithCache(ctx context.Context, conn driver.Conn, sc *summaryCache, versionID string) (runSummary, error) {
+	s, err := latestSummaryForVersion(ctx, conn, versionID)
+	if err != nil {
+		return s, err
+	}
+	if sc != nil {
+		sc.put(s.RunID, s)
+	}
+	return s, nil
 }
 
 func parseIntDefault(raw string, fallback int) int {

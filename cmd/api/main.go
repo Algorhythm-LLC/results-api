@@ -41,10 +41,7 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID, middleware.RealIP, middleware.Logger, middleware.Recoverer)
-	if keys := parseAPIKeySet(os.Getenv("RESULTS_API_API_KEYS")); len(keys) > 0 {
-		r.Use(apiKeyMiddleware(keys))
-		slog.Info("results-api API key auth enabled", "keys", len(keys))
-	}
+
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
@@ -59,11 +56,20 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
+
 	summaryCache := newSummaryCacheFromEnv()
 	if summaryCache != nil {
 		slog.Info("results-api run summary cache enabled", "ttl", summaryCache.ttl, "max_entries", summaryCache.size)
 	}
-	registerRoutes(r, conn, summaryCache)
+
+	r.Group(func(r chi.Router) {
+		r.Use(newRateLimitMiddlewareFromEnv())
+		if keys := parseAPIKeySet(os.Getenv("RESULTS_API_API_KEYS")); len(keys) > 0 {
+			r.Use(apiKeyMiddleware(keys))
+			slog.Info("results-api API key auth enabled", "keys", len(keys))
+		}
+		registerRoutes(r, conn, summaryCache)
+	})
 
 	srv := &http.Server{Addr: ":" + port, Handler: r}
 	go func() {
@@ -130,6 +136,6 @@ func registerRoutes(r chi.Router, conn driver.Conn, sc *summaryCache) {
 	r.Get("/api/v1/runs/{run_id}/summary", getRunSummary(conn, sc))
 	r.Get("/api/v1/runs/{run_id}/trades", getRunTrades(conn))
 	r.Get("/api/v1/runs/{run_id}/equity-curve", getRunEquity(conn))
-	r.Get("/api/v1/compare/runs", compareRuns(conn))
-	r.Get("/api/v1/compare/versions", compareVersions(conn))
+	r.Get("/api/v1/compare/runs", compareRuns(conn, sc))
+	r.Get("/api/v1/compare/versions", compareVersions(conn, sc))
 }
